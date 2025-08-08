@@ -2,12 +2,6 @@ services:
   - type: web
     name: coffee-backend
     env: python
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.4
-      # keep DATABASE_URL in the dashboard, or add here with sync:false
-      # - key: DATABASE_URL
-      #   sync: false
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers=2
     plan: free
