@@ -2,7 +2,7 @@ services:
   - type: web
     name: coffee-backend
     env: python
-    buildCommand: ""
-    startCommand: python app.py
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers=2
     plan: free
     autoDeploy: true
