@@ -12,15 +12,16 @@ CORS(app)
 # ---- DB CONFIG: Postgres if DATABASE_URL exists, else local SQLite ----
 db_url = os.environ.get("DATABASE_URL", "sqlite:///orders.db")
 
-# Render/Neon may give postgres[ql]://; SQLAlchemy needs postgresql+psycopg2://
+# Normalize to SQLAlchemy's psycopg (v3) driver
 if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
 elif db_url.startswith("postgresql://"):
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
+
 
 # ---- MODEL ----
 class Order(db.Model):
@@ -33,8 +34,10 @@ class Order(db.Model):
     order_json = db.Column(db.Text)     # full order as JSON (qty, sugar toggle etc.)
     delivered = db.Column(db.Boolean, default=False, nullable=False)
 
+
 with app.app_context():
     db.create_all()
+
 
 # ---- HELPERS ----
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -52,10 +55,12 @@ def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
     except Exception:
         return None
 
+
 # ---- ROUTES ----
 @app.route("/", methods=["GET"])
 def health():
     return {"status": "ok"}, 200
+
 
 # 1) Store a new order
 @app.route("/store_order", methods=["POST"])
@@ -72,6 +77,7 @@ def store_order():
     db.session.add(order_row)
     db.session.commit()
     return jsonify({"message": "Order stored successfully", "id": order_row.id}), 200
+
 
 # 2) Get recent undelivered orders
 @app.route("/get_recent_orders", methods=["GET"])
@@ -95,6 +101,7 @@ def get_recent_orders():
         })
     return jsonify(result), 200
 
+
 # 3) Mark as delivered
 @app.route("/mark_delivered", methods=["POST"])
 def mark_delivered():
@@ -108,6 +115,7 @@ def mark_delivered():
     order.delivered = True
     db.session.commit()
     return jsonify({"message": "Order marked as delivered"}), 200
+
 
 # 4) Get all orders (optional date filters)
 @app.route("/all_orders", methods=["GET"])
@@ -140,6 +148,7 @@ def all_orders():
             "order": json.loads(o.order_json or "[]"),
         })
     return jsonify(result), 200
+
 
 # ---- ENTRYPOINT ----
 if __name__ == "__main__":
