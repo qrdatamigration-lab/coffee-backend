@@ -19,7 +19,10 @@ elif db_url.startswith("postgresql://"):
     db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+# ✅ INIT DB (this was missing)
+db = SQLAlchemy(app)
 
 # ---- MODEL ----
 class Order(db.Model):
@@ -32,35 +35,26 @@ class Order(db.Model):
     order_json = db.Column(db.Text)     # full order as JSON (qty, sugar toggle etc.)
     delivered = db.Column(db.Boolean, default=False, nullable=False)
 
-
 with app.app_context():
     db.create_all()
 
-
 # ---- HELPERS ----
 def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
-    """
-    Accepts 'YYYY-MM-DD' or ISO 'YYYY-MM-DDTHH:MM:SS[.fff][Z]'.
-    Returns None if value is falsy or malformed.
-    """
     if not value:
         return None
     try:
-        if len(value) == 10:  # date only
+        if len(value) == 10:  # YYYY-MM-DD
             return datetime.fromisoformat(value)
         value = value.rstrip("Z")
         return datetime.fromisoformat(value)
     except Exception:
         return None
 
-
 # ---- ROUTES ----
 @app.route("/", methods=["GET"])
 def health():
     return {"status": "ok"}, 200
 
-
-# 1) Store a new order
 @app.route("/store_order", methods=["POST"])
 def store_order():
     data = request.get_json(silent=True) or {}
@@ -76,8 +70,6 @@ def store_order():
     db.session.commit()
     return jsonify({"message": "Order stored successfully", "id": order_row.id}), 200
 
-
-# 2) Get recent undelivered orders
 @app.route("/get_recent_orders", methods=["GET"])
 def get_recent_orders():
     orders = (
@@ -86,21 +78,17 @@ def get_recent_orders():
         .limit(20)
         .all()
     )
-    result = []
-    for o in orders:
-        result.append({
-            "id": o.id,
-            "timestamp": o.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-            "mode": o.mode,
-            "name": o.name,
-            "emp_code": o.emp_code,
-            "room_no": o.room_no,
-            "order": json.loads(o.order_json or "[]"),
-        })
+    result = [{
+        "id": o.id,
+        "timestamp": o.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+        "mode": o.mode,
+        "name": o.name,
+        "emp_code": o.emp_code,
+        "room_no": o.room_no,
+        "order": json.loads(o.order_json or "[]"),
+    } for o in orders]
     return jsonify(result), 200
 
-
-# 3) Mark as delivered
 @app.route("/mark_delivered", methods=["POST"])
 def mark_delivered():
     data = request.get_json(silent=True) or {}
@@ -114,39 +102,33 @@ def mark_delivered():
     db.session.commit()
     return jsonify({"message": "Order marked as delivered"}), 200
 
-
-# 4) Get all orders (optional date filters)
 @app.route("/all_orders", methods=["GET"])
 def all_orders():
-    start_str = request.args.get("start")   # e.g. 2025-08-01
-    end_str = request.args.get("end")       # e.g. 2025-08-08
-
+    start_str = request.args.get("start")
+    end_str = request.args.get("end")
     start_dt = _parse_iso_datetime(start_str)
     end_dt = _parse_iso_datetime(end_str)
 
-    query = Order.query
+    q = Order.query
     if start_dt:
-        query = query.filter(Order.timestamp >= start_dt)
+        q = q.filter(Order.timestamp >= start_dt)
     if end_dt:
         if end_str and len(end_str) == 10:
             end_dt = end_dt.replace(hour=23, minute=59, second=59)
-        query = query.filter(Order.timestamp <= end_dt)
+        q = q.filter(Order.timestamp <= end_dt)
 
-    orders = query.order_by(Order.timestamp.desc()).all()
-    result = []
-    for o in orders:
-        result.append({
-            "id": o.id,
-            "timestamp": o.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-            "mode": o.mode,
-            "name": o.name,
-            "emp_code": o.emp_code,
-            "room_no": o.room_no,
-            "delivered": o.delivered,
-            "order": json.loads(o.order_json or "[]"),
-        })
+    orders = q.order_by(Order.timestamp.desc()).all()
+    result = [{
+        "id": o.id,
+        "timestamp": o.timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+        "mode": o.mode,
+        "name": o.name,
+        "emp_code": o.emp_code,
+        "room_no": o.room_no,
+        "delivered": o.delivered,
+        "order": json.loads(o.order_json or "[]"),
+    } for o in orders]
     return jsonify(result), 200
-
 
 # ---- ENTRYPOINT ----
 if __name__ == "__main__":
